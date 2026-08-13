@@ -1,0 +1,22 @@
+{
+    "venue_name": "Current Test Venue",
+
+    "zones": {
+        "Zone 1": {
+            "area_m2": 100,
+            "capacity": 50
+        },
+
+        "Zone 2": {
+            "area_m2": 60,
+            "capacity": 30
+        }
+    },
+
+    "density_thresholds": {
+        "low": 0.10,
+        "medium": 0.25,
+        "high": 0.50,
+        "critical": 0.75
+    }
+}
