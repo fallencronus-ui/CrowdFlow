@@ -15,7 +15,20 @@ TRACKING_PATH = "videos/zone_tracking.csv"
 
 CONFIG_PATH = "backend/venue_config.json"
 
+EARLY_WARNING_PATH = "videos/early_warning.csv"
+
 OUTPUT_PATH = "videos/crowd_prediction.csv"
+
+
+# ==========================================
+# ZONE NAME MAPPING
+# ==========================================
+
+ZONE_NAME_MAP = {
+    "Zone 1": "Left Walkway",
+    "Zone 2": "Main Walkway",
+    "Zone 3": "Right Walkway"
+}
 
 
 # ==========================================
@@ -35,7 +48,9 @@ MAX_REASONABLE_CHANGE_PER_MINUTE = 20
 # GET ACTUAL FPS
 # ==========================================
 
-cap = cv2.VideoCapture(VIDEO_PATH)
+cap = cv2.VideoCapture(
+    VIDEO_PATH
+)
 
 if not cap.isOpened():
 
@@ -67,9 +82,15 @@ print(
 # LOAD CONFIG
 # ==========================================
 
-print("Loading venue configuration...")
+print(
+    "Loading venue configuration..."
+)
 
-with open(CONFIG_PATH, "r") as file:
+
+with open(
+    CONFIG_PATH,
+    "r"
+) as file:
 
     config = json.load(file)
 
@@ -81,14 +102,43 @@ zones_config = config["zones"]
 # LOAD TRACKING
 # ==========================================
 
-print("Loading tracking data...")
+print(
+    "Loading tracking data..."
+)
+
 
 df = pd.read_csv(
     TRACKING_PATH
 )
 
 
-# Ignore outside zone
+# ==========================================
+# LOAD EARLY WARNING
+# ==========================================
+
+print(
+    "Loading early warning data..."
+)
+
+
+early_warning = pd.read_csv(
+    EARLY_WARNING_PATH
+)
+
+
+# ==========================================
+# MAP ZONE NAMES
+# ==========================================
+
+df["zone_name"] = (
+    df["zone"]
+    .map(ZONE_NAME_MAP)
+)
+
+
+# ==========================================
+# IGNORE OUTSIDE
+# ==========================================
 
 df = df[
     df["zone"] != "Outside"
@@ -122,7 +172,7 @@ occupancy = (
     df.groupby(
         [
             "time_window",
-            "zone"
+            "zone_name"
         ]
     )["person_id"]
     .nunique()
@@ -152,13 +202,45 @@ results = []
 for zone_name, zone_info in zones_config.items():
 
     zone_data = occupancy[
-        occupancy["zone"] == zone_name
+        occupancy["zone_name"]
+        == zone_name
     ].copy()
 
 
-    # --------------------------------------
-    # No data
-    # --------------------------------------
+    # ======================================
+    # GET RISK INFORMATION
+    # ======================================
+
+    risk_data = early_warning[
+        early_warning["zone"]
+        == zone_name
+    ]
+
+
+    if len(risk_data) > 0:
+
+        risk_score = float(
+            risk_data.iloc[0][
+                "risk_score"
+            ]
+        )
+
+        risk_level = str(
+            risk_data.iloc[0][
+                "risk_level"
+            ]
+        )
+
+    else:
+
+        risk_score = 0
+
+        risk_level = "LOW"
+
+
+    # ======================================
+    # NO DATA
+    # ======================================
 
     if len(zone_data) == 0:
 
@@ -179,7 +261,19 @@ for zone_name, zone_info in zones_config.items():
                 0
             ),
 
-            "prediction": "NO DATA"
+            "minutes_to_capacity": None,
+
+            "trend":
+                "INSUFFICIENT HISTORY",
+
+            "prediction":
+                "COLLECTING MORE HISTORY",
+
+            "risk_score":
+                risk_score,
+
+            "risk_level":
+                risk_level
 
         })
 
@@ -252,12 +346,12 @@ for zone_name, zone_info in zones_config.items():
 
         people_per_minute = max(
             -MAX_REASONABLE_CHANGE_PER_MINUTE,
+
             min(
                 people_per_minute,
                 MAX_REASONABLE_CHANGE_PER_MINUTE
             )
         )
-
 
     else:
 
@@ -307,7 +401,6 @@ for zone_name, zone_info in zones_config.items():
             predicted_10
         )
 
-
     else:
 
         predicted_5 = None
@@ -338,14 +431,12 @@ for zone_name, zone_info in zones_config.items():
             people_per_minute
         )
 
-
     elif (
         current_people >= capacity
         and capacity > 0
     ):
 
         minutes_to_capacity = 0
-
 
     else:
 
@@ -358,23 +449,33 @@ for zone_name, zone_info in zones_config.items():
 
     if not enough_history:
 
-        trend = "INSUFFICIENT HISTORY"
+        trend = (
+            "INSUFFICIENT HISTORY"
+        )
 
     elif people_per_minute >= 5:
 
-        trend = "STRONGLY INCREASING"
+        trend = (
+            "STRONGLY INCREASING"
+        )
 
     elif people_per_minute >= 1:
 
-        trend = "INCREASING"
+        trend = (
+            "INCREASING"
+        )
 
     elif people_per_minute <= -5:
 
-        trend = "STRONGLY DECREASING"
+        trend = (
+            "STRONGLY DECREASING"
+        )
 
     elif people_per_minute <= -1:
 
-        trend = "DECREASING"
+        trend = (
+            "DECREASING"
+        )
 
     else:
 
@@ -391,13 +492,11 @@ for zone_name, zone_info in zones_config.items():
             "COLLECTING MORE HISTORY"
         )
 
-
     elif current_people >= capacity:
 
         prediction = (
             "CAPACITY REACHED"
         )
-
 
     elif (
         minutes_to_capacity != math.inf
@@ -409,7 +508,6 @@ for zone_name, zone_info in zones_config.items():
             "WITHIN 5 MINUTES"
         )
 
-
     elif (
         minutes_to_capacity != math.inf
         and minutes_to_capacity <= 10
@@ -419,20 +517,17 @@ for zone_name, zone_info in zones_config.items():
             "CONGESTION DEVELOPING"
         )
 
-
     elif people_per_minute >= 2:
 
         prediction = (
             "CROWD ACCUMULATING"
         )
 
-
     elif people_per_minute <= -2:
 
         prediction = (
             "ZONE CLEARING"
         )
-
 
     else:
 
@@ -442,7 +537,7 @@ for zone_name, zone_info in zones_config.items():
 
 
     # ======================================
-    # SAVE
+    # SAVE RESULT
     # ======================================
 
     results.append({
@@ -474,7 +569,13 @@ for zone_name, zone_info in zones_config.items():
             trend,
 
         "prediction":
-            prediction
+            prediction,
+
+        "risk_score":
+            risk_score,
+
+        "risk_level":
+            risk_level
 
     })
 
@@ -516,15 +617,18 @@ for _, row in results_df.iterrows():
         f"ZONE: {row['zone']}"
     )
 
+
     print(
         f"Current people: "
         f"{int(row['current_people'])}"
     )
 
+
     print(
         f"Trend: "
         f"{row['trend']}"
     )
+
 
     print(
         f"Rate: "
@@ -538,13 +642,11 @@ for _, row in results_df.iterrows():
     ):
 
         print(
-            "Predicted in 5 min: "
-            "N/A"
+            "Predicted in 5 min: N/A"
         )
 
         print(
-            "Predicted in 10 min: "
-            "N/A"
+            "Predicted in 10 min: N/A"
         )
 
     else:
@@ -574,6 +676,13 @@ for _, row in results_df.iterrows():
             f"Time to capacity: "
             f"{row['minutes_to_capacity']:.1f} min"
         )
+
+
+    print(
+        f"Risk: "
+        f"{int(row['risk_score'])}/100 "
+        f"({row['risk_level']})"
+    )
 
 
     print(

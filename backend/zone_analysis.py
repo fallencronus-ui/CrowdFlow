@@ -100,8 +100,8 @@ print("Assigning people to zones...")
 
 df["zone"] = df.apply(
     lambda row: find_zone(
-        row["center_x"],
-        row["center_y"]
+        row["foot_x"],
+        row["foot_y"]
     ),
     axis=1
 )

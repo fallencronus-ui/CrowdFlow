@@ -1,0 +1,60 @@
+{
+    "venue_name": "Current Test Venue",
+
+    "nodes": {
+        "Entry": {
+            "type": "entry"
+        },
+
+        "Left Walkway": {
+            "type": "pathway"
+        },
+
+        "Main Walkway": {
+            "type": "pathway"
+        },
+
+        "Right Walkway": {
+            "type": "pathway"
+        },
+
+        "Exit": {
+            "type": "exit"
+        }
+    },
+
+    "edges": [
+        {
+            "from": "Entry",
+            "to": "Left Walkway",
+            "distance_m": 35
+        },
+        {
+            "from": "Left Walkway",
+            "to": "Exit",
+            "distance_m": 35
+        },
+
+        {
+            "from": "Entry",
+            "to": "Main Walkway",
+            "distance_m": 30
+        },
+        {
+            "from": "Main Walkway",
+            "to": "Exit",
+            "distance_m": 30
+        },
+
+        {
+            "from": "Entry",
+            "to": "Right Walkway",
+            "distance_m": 35
+        },
+        {
+            "from": "Right Walkway",
+            "to": "Exit",
+            "distance_m": 35
+        }
+    ]
+}

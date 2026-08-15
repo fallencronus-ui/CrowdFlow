@@ -2,14 +2,19 @@
     "venue_name": "Current Test Venue",
 
     "zones": {
-        "Zone 1": {
+        "Left Walkway": {
+            "area_m2": 80,
+            "capacity": 40
+        },
+
+        "Main Walkway": {
             "area_m2": 100,
             "capacity": 50
         },
 
-        "Zone 2": {
-            "area_m2": 60,
-            "capacity": 30
+        "Right Walkway": {
+            "area_m2": 120,
+            "capacity": 60
         }
     },
 

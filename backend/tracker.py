@@ -184,9 +184,10 @@ csv_writer.writerow([
     "frame",
     "person_id",
     "center_x",
-    "center_y"
+    "center_y",
+    "foot_x",
+    "foot_y"
 ])
-
 
 # ==========================================
 # 8. PROCESS VIDEO
@@ -373,16 +374,12 @@ while True:
             )
 
 
-            # Center point
+            center_x = int((x1 + x2) / 2)
+            center_y = int((y1 + y2) / 2)
 
-            center_x = int(
-                (x1 + x2) / 2
-            )
-
-            center_y = int(
-                (y1 + y2) / 2
-            )
-
+            # Bottom-center / approximate foot point
+            foot_x = int((x1 + x2) / 2)
+            foot_y = int(y2)
 
             # --------------------------------
             # Save valid tracking data
@@ -394,9 +391,10 @@ while True:
                     frame_number,
                     tracker_id,
                     center_x,
-                    center_y
+                    center_y,
+                    foot_x,
+                    foot_y
                 ])
-
 
             # --------------------------------
             # Draw bounding box

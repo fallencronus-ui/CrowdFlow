@@ -17,12 +17,27 @@ OUTPUT_PATH = "videos/early_warning.csv"
 
 
 # ==========================================
+# ZONE NAME MAPPING
+# ==========================================
+
+ZONE_NAME_MAP = {
+    "Zone 1": "Left Walkway",
+    "Zone 2": "Main Walkway",
+    "Zone 3": "Right Walkway"
+}
+
+
+# ==========================================
 # LOAD CONFIGURATION
 # ==========================================
 
 print("Loading venue configuration...")
 
-with open(CONFIG_PATH, "r") as file:
+with open(
+    CONFIG_PATH,
+    "r"
+) as file:
+
     config = json.load(file)
 
 
@@ -43,28 +58,42 @@ tracking = pd.read_csv(
 
 
 # ==========================================
+# MAP TRACKING ZONES
+# ==========================================
+
+tracking["zone_name"] = (
+    tracking["zone"]
+    .map(ZONE_NAME_MAP)
+)
+
+
+# ==========================================
 # CURRENT OCCUPANCY
 # ==========================================
 
-latest_frame = tracking["frame"].max()
+latest_frame = tracking[
+    "frame"
+].max()
+
 
 latest_tracking = tracking[
     tracking["frame"] == latest_frame
 ].copy()
 
 
-# Ignore people outside our defined zones
+# Ignore people outside zones
 
 latest_tracking = latest_tracking[
     latest_tracking["zone"] != "Outside"
 ]
 
 
-# Count unique tracked people per zone
+# Count unique tracked people
 
 occupancy = (
     latest_tracking
-    .groupby("zone")["person_id"]
+    .dropna(subset=["zone_name"])
+    .groupby("zone_name")["person_id"]
     .nunique()
     .to_dict()
 )
@@ -83,6 +112,16 @@ print("Loading flow data...")
 
 flow = pd.read_csv(
     FLOW_PATH
+)
+
+
+# ==========================================
+# MAP FLOW ZONES
+# ==========================================
+
+flow["zone_name"] = (
+    flow["zone"]
+    .map(ZONE_NAME_MAP)
 )
 
 
@@ -126,6 +165,7 @@ for zone_name, zone_info in zones_config.items():
             0
         )
     )
+
 
     capacity = float(
         zone_info.get(
@@ -189,7 +229,7 @@ for zone_name, zone_info in zones_config.items():
     if len(latest_flow) > 0:
 
         zone_flow = latest_flow[
-            latest_flow["zone"]
+            latest_flow["zone_name"]
             == zone_name
         ]
 
@@ -233,7 +273,10 @@ for zone_name, zone_info in zones_config.items():
             / net_flow
         )
 
-    elif people >= capacity and capacity > 0:
+    elif (
+        people >= capacity
+        and capacity > 0
+    ):
 
         minutes_to_capacity = 0
 
@@ -246,72 +289,150 @@ for zone_name, zone_info in zones_config.items():
     # RISK SCORE
     # ======================================
 
+    # ======================================
+    # FORWARD-LOOKING RISK SCORE
+    # ======================================
+
     risk_score = 0
 
 
-    # --------------------------------------
-    # Capacity component
-    # --------------------------------------
+    # ======================================
+    # 1. CURRENT CAPACITY PRESSURE
+    # ======================================
 
-    if capacity_usage >= 1.0:
-
-        risk_score += 60
-
-    elif capacity_usage >= 0.80:
-
-        risk_score += 45
-
-    elif capacity_usage >= 0.60:
-
-        risk_score += 25
-
-    elif capacity_usage >= 0.40:
-
-        risk_score += 10
-
-
-    # --------------------------------------
-    # Flow component
-    # --------------------------------------
-
-    if net_flow >= 10:
-
-        risk_score += 30
-
-    elif net_flow >= 5:
-
-        risk_score += 20
-
-    elif net_flow >= 2:
-
-        risk_score += 10
-
-
-    # --------------------------------------
-    # Density component
-    # --------------------------------------
-
-    if density >= thresholds["critical"]:
-
-        risk_score += 30
-
-    elif density >= thresholds["high"]:
-
-        risk_score += 20
-
-    elif density >= thresholds["medium"]:
-
-        risk_score += 10
-
-
-    # Cap score at 100
-
-    risk_score = min(
-        risk_score,
-        100
+    current_capacity_usage = (
+        people / capacity
+        if capacity > 0
+        else 0
     )
 
 
+    if current_capacity_usage >= 1.0:
+
+        risk_score += 25
+
+    elif current_capacity_usage >= 0.80:
+
+        risk_score += 20
+
+    elif current_capacity_usage >= 0.60:
+
+        risk_score += 15
+
+    elif current_capacity_usage >= 0.40:
+
+        risk_score += 8
+
+
+    # ======================================
+    # 2. CURRENT DENSITY
+    # ======================================
+
+    if density >= thresholds["critical"]:
+
+        risk_score += 20
+
+    elif density >= thresholds["high"]:
+
+        risk_score += 15
+
+    elif density >= thresholds["medium"]:
+
+        risk_score += 8
+
+
+    # ======================================
+    # 3. CROWD GROWTH
+    # ======================================
+
+    if net_flow >= 10:
+
+        risk_score += 20
+
+    elif net_flow >= 5:
+
+        risk_score += 15
+
+    elif net_flow >= 2:
+
+        risk_score += 8
+
+
+    # ======================================
+    # 4. TIME TO CAPACITY
+    # ======================================
+
+    if (
+        minutes_to_capacity != math.inf
+    ):
+
+        if minutes_to_capacity <= 5:
+
+            risk_score += 35
+
+        elif minutes_to_capacity <= 10:
+
+            risk_score += 30
+
+        elif minutes_to_capacity <= 15:
+
+            risk_score += 20
+
+        elif minutes_to_capacity <= 30:
+
+            risk_score += 10
+
+
+    # ======================================
+    # 5. FUTURE CAPACITY PROJECTION
+    # ======================================
+
+    if net_flow > 0 and capacity > 0:
+
+        predicted_5 = (
+            people
+            +
+            net_flow * 5
+        )
+
+        predicted_10 = (
+            people
+            +
+            net_flow * 10
+        )
+
+
+        predicted_5_usage = (
+            predicted_5 / capacity
+        )
+
+        predicted_10_usage = (
+            predicted_10 / capacity
+        )
+
+
+        # Future capacity breach
+        if predicted_10_usage >= 1.0:
+
+            risk_score += 20
+
+        elif predicted_10_usage >= 0.80:
+
+            risk_score += 12
+
+        elif predicted_10_usage >= 0.60:
+
+            risk_score += 6
+
+
+    # ======================================
+    # CAP SCORE
+    # ======================================
+
+    risk_score = min(
+        int(risk_score),
+        100
+    )
     # ======================================
     # RISK LEVEL
     # ======================================
@@ -337,10 +458,6 @@ for zone_name, zone_info in zones_config.items():
     # PREDICTION
     # ======================================
 
-# ======================================
-# PREDICTION
-# ======================================
-
     if (
         minutes_to_capacity != math.inf
         and minutes_to_capacity <= 5
@@ -352,7 +469,6 @@ for zone_name, zone_info in zones_config.items():
             "WITHIN 5 MINUTES"
         )
 
-
     elif (
         minutes_to_capacity != math.inf
         and minutes_to_capacity <= 10
@@ -363,13 +479,11 @@ for zone_name, zone_info in zones_config.items():
             "CONGESTION DEVELOPING"
         )
 
-
     elif net_flow >= 2:
 
         prediction = (
             "CROWD ACCUMULATING"
         )
-
 
     elif net_flow <= -2:
 
@@ -377,12 +491,13 @@ for zone_name, zone_info in zones_config.items():
             "ZONE CLEARING"
         )
 
-
     else:
 
         prediction = (
             "NO IMMEDIATE RISK"
         )
+
+
     # ======================================
     # RECOMMENDATION
     # ======================================
@@ -529,8 +644,7 @@ for _, row in results_df.iterrows():
     ):
 
         print(
-            "Time to capacity: "
-            "N/A"
+            "Time to capacity: N/A"
         )
 
     else:
@@ -574,6 +688,7 @@ if len(results_df) > 0:
     print("--------------------------------")
     print("HIGHEST RISK ZONE")
     print("--------------------------------")
+
 
     print(
         f"Zone: {highest['zone']}"
